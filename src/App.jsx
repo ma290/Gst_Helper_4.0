@@ -8,11 +8,10 @@ import {
 } from "./utils/compare.js";
 import "./App.css";
 import "./theme.css";
+import ThemeToggle from "./ThemeToggle.jsx";
 import useTableKeyboard from "./useTableKeyboard.js";
 import ShortcutHelp from "./ShortcutHelp.jsx";
 import NavigationBar from "./NavigationBar.jsx";
-import FirebaseGate from "./FirebaseGate.jsx";
-import { useAccount } from "./accountContext.js";
 import { readRoute, routeHash } from "./utils/navigation.js";
 import ClientHome from "./ClientHome.jsx";
 import { filingKey, restoreFiling, saveFiling } from "./utils/filingStorage.js";
@@ -99,7 +98,7 @@ function Generator({ client, onBack, month, year, onPeriodChange, canGoBack }) {
     saveFiling(filingKey(client.id, month, year), {
       files, fileNames, rows, output, summary, reference, referenceName, comparison, structureIssues,
     }).then(() => {
-      if (!cancelled) setSaveStatus('Saved to your Firebase account for this month.');
+      if (!cancelled) setSaveStatus('Saved for this month on this device.');
     }).catch(() => {
       if (!cancelled) setSaveStatus('Uploads could not be saved. Check browser storage before leaving.');
     });
@@ -980,9 +979,8 @@ function Generator({ client, onBack, month, year, onPeriodChange, canGoBack }) {
   );
 }
 
-function Workspace() {
+export default function App() {
   useTableKeyboard();
-  const { clients } = useAccount();
   const [route, setRoute] = useState(() => readRoute(window.location.hash));
   useEffect(() => {
     const syncRoute = () => setRoute(readRoute(window.location.hash));
@@ -1018,6 +1016,7 @@ function Workspace() {
   let selectedClient = null;
   if (route.screen === 'filing') {
     try {
+      const clients = JSON.parse(localStorage.getItem('gst-helper-clients-v1') || '[]');
       selectedClient = Array.isArray(clients) ? clients.find(client => client.id === route.clientId) : null;
     } catch { /* show the client list if this client cannot be loaded */ }
   }
@@ -1036,13 +1035,9 @@ function Workspace() {
     try { localStorage.setItem(`gst-helper-period-${client.id}`, JSON.stringify(next)); } catch { /* optional preference */ }
     navigate({ screen: 'filing', clientId: client.id, ...next });
   };
-  return <><ShortcutHelp onNavigate={navigate} />{selectedClient
+  return <><ThemeToggle /><ShortcutHelp onNavigate={navigate} />{selectedClient
     ? <Generator key={filingKey(selectedClient.id, period.month, period.year)} client={selectedClient}
         month={period.month} year={period.year} onPeriodChange={changePeriod} onBack={goBack} canGoBack={window.history.state?.gstHelperDepth > 0} />
     : <ClientHome key={routeHash(route)} newClient={route.newClient} view={route.screen === 'dashboard' ? 'dashboard' : 'clients'} onNavigate={navigate} onOpen={openClient}
         onBack={goBack} canGoBack={window.history.state?.gstHelperDepth > 0} />}</>;
-}
-
-export default function App() {
-  return <FirebaseGate><Workspace /></FirebaseGate>;
 }

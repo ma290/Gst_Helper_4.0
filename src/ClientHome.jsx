@@ -4,16 +4,29 @@ import { listFilings } from './utils/filingStorage.js';
 import { summarizeFiling } from './utils/filingDashboard.js';
 import Dashboard from './Dashboard.jsx';
 import NavigationBar from './NavigationBar.jsx';
-import { useAccount } from './accountContext.js';
 
+const STORAGE_KEY = 'gst-helper-clients-v1';
 const emptyClient = { tradeName: '', partyName: '', gstin: '', returnFrequency: 'Quarterly', active: true };
 
+function readClients() {
+  try {
+    const clients = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    if (!Array.isArray(clients) || clients.some(client => !client ||
+      typeof client.id !== 'string' || typeof client.tradeName !== 'string' ||
+      typeof client.partyName !== 'string' || typeof client.gstin !== 'string' ||
+      !['Monthly', 'Quarterly', 'Annual'].includes(client.returnFrequency))) {
+      throw new Error('Invalid client list');
+    }
+    return { clients, error: '' };
+  } catch {
+    return { clients: [], error: 'Saved clients could not be loaded. Check browser storage before adding clients.' };
+  }
+}
 
 export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, newClient = false, onBack, canGoBack }) {
-  const { clients, saveClients } = useAccount();
-  const initial = { error: '' };
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [initial] = useState(readClients);
+  const [clients, setClients] = useState(initial.clients);
+  const [error, setError] = useState(initial.error);
   const [draft, setDraft] = useState(newClient ? { ...emptyClient } : null);
   const [deleteId, setDeleteId] = useState(null);
   const [query, setQuery] = useState('');
@@ -47,17 +60,20 @@ export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, new
     return () => { cancelled = true; };
   }, []);
 
-  async function persist(next) {
-    if (saving) return false;
-    setSaving(true);
+  function persist(next) {
+    if (initial.error) {
+      setError(initial.error);
+      return false;
+    }
     try {
-      await saveClients(next);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setClients(next);
       setError('');
       return true;
     } catch {
-      setError('Unable to save clients to Firebase. Check your connection and try again.');
+      setError('Unable to save clients. Allow browser storage and try again.');
       return false;
-    } finally { setSaving(false); }
+    }
   }
 
   async function saveClient(event) {
@@ -81,7 +97,7 @@ export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, new
       const next = client.id
         ? clients.map(item => item.id === client.id ? client : item)
         : [...clients, { ...client, id: createClientId() }];
-      if (await persist(next)) { setDraft(null); setQuery(''); }
+      if (persist(next)) { setDraft(null); setQuery(''); }
     } catch {
       setError('Unable to save this client. Please try again.');
     }
@@ -103,7 +119,7 @@ export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, new
         <p className="subtitle">Choose a client to upload files and generate their return.</p>
       </header>
       <main className="container">
-        <NavigationBar disabled={saving} canGoBack={canGoBack || Boolean(draft) || Boolean(deleteId)}
+        <NavigationBar canGoBack={canGoBack || Boolean(draft) || Boolean(deleteId)}
           onBack={() => { if (draft) { setDraft(null); setError(''); } else if (deleteId) setDeleteId(null); else onBack(); }} />
         <section className="card">
           <div className="client-toolbar">
@@ -115,7 +131,7 @@ export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, new
             <button className="btn btn-secondary" onClick={() => onNavigate({ screen: 'dashboard' })}>Dashboard</button>
             </div>
           </div>
-          <p className="client-storage-note">Client details are saved privately in your Firebase account.</p>
+          <p className="client-storage-note">Client details are saved in this browser on this device.</p>
           {filingStatus && <p className="client-storage-note" role="status">{filingStatus}</p>}
           {error && <div className="error-msg" role="alert">{error}</div>}
           {draft && (
@@ -139,7 +155,7 @@ export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, new
                 </label>
               </div>
               <div className="client-actions">
-                <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save client'}</button>
+                <button className="btn btn-primary" type="submit">Save client</button>
                 <button className="btn btn-secondary" type="button" onClick={() => { setDraft(null); setError(initial.error); }}>Cancel</button>
               </div>
             </form>
@@ -148,8 +164,8 @@ export default function ClientHome({ onOpen, view = 'dashboard', onNavigate, new
             <div className="client-delete" role="alert">
               <p>Delete {clients.find(client => client.id === deleteId)?.tradeName} from your client list?</p>
               <div className="client-actions">
-                <button className="btn btn-danger" disabled={saving} onClick={async () => {
-                  if (await persist(clients.filter(client => client.id !== deleteId))) setDeleteId(null);
+                <button className="btn btn-danger" onClick={() => {
+                  if (persist(clients.filter(client => client.id !== deleteId))) setDeleteId(null);
                 }}>Delete client</button>
                 <button className="btn btn-secondary" onClick={() => setDeleteId(null)}>Cancel</button>
               </div>

@@ -1,5 +1,3 @@
-import { firebaseConfigured, requireUser } from './firebase.js';
-import { saveCloudFiling, restoreCloudFiling, listCloudFilings } from './cloudFilings.js';
 
 export function filingKey(clientId, month, year) {
   return JSON.stringify([clientId, Number(year), Number(month)]);
@@ -30,22 +28,18 @@ async function transact(mode, key, value) {
 
 let writes = Promise.resolve();
 export function saveFiling(key, value) {
-  const uid = firebaseConfigured ? requireUser() : null;
-  const next = writes.catch(() => {}).then(() => uid ? saveCloudFiling(key, value, uid) : transact('readwrite', key, value));
+  const next = writes.catch(() => {}).then(() => transact('readwrite', key, value));
   writes = next;
   return next;
 }
 
 export async function restoreFiling(key) {
-  const uid = firebaseConfigured ? requireUser() : null;
   await writes.catch(() => {});
-  return uid ? restoreCloudFiling(key, uid) : transact('readonly', key);
+  return transact('readonly', key);
 }
 
 export async function listFilings() {
-  const uid = firebaseConfigured ? requireUser() : null;
   await writes.catch(() => {});
-  if (uid) return listCloudFilings(uid);
   return listLocalFilings();
 }
 
